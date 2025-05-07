@@ -4,7 +4,7 @@ Windows C++ 기반 메시지 브로커 직접 구현
 <br>
 
 - Non-Blocking IO : Windows 커널 오브젝트(IO Completion Port)를 이용한 proactor 비동기 통신
-- Sequential IO : Network IO를 최소화하고자 기술적 도전중중
+- Sequential IO : Network IO를 최소화하고자 기술적 도전중
 - Zero-Copy : 데이터를 복사하지 않고 직접 버퍼를 통해 처리해서 메모리 비용 절감
 - Buffer Pooling : 데이터 전송시 효율적인 Buffer 관리
 
