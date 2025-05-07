@@ -3,9 +3,12 @@
 
 #include <unordered_map>
 #include <mutex>
+#include <memory>
+#include <optional>
+#include <sstream>
 #include <iostream>
-
 #include "topic.h"
+#include "disk_logger.h"
 
 class TopicManager {
 public:
@@ -14,32 +17,47 @@ public:
         return instance;
     }
 
-    void publish(const std::string& topic, const std::string& msg) {
-        std::lock_guard<std::mutex> lock(mtx);
-        topicMap[topic].publish(msg);
+    void init_logger(const std::string& logPath) {
+        std::scoped_lock lock(loggerInitMutex);
+        if (!logger) {
+            logger = std::make_unique<DiskLogger>(logPath, 1024 * 1024);
+        }
     }
 
-    std::optional<std::string> pull(const std::string& topic) {
-        std::lock_guard<std::mutex> lock(mtx);
-        if (topicMap.find(topic) != topicMap.end()) {
-            std::cout << "[TopicManager] Topic found: " << topic << std::endl;
-            return topicMap[topic].pull();
+    void publish(const std::string& topic, const std::string& msg) {
+        std::scoped_lock lock(mtx);
+        topicMap[topic].publish(msg);
+        if (logger) {
+            logger->log("[TopicManager] Published to " + topic + ": " + msg);
         }
-        std::cout << "[TopicManager] No such topic: " << topic << std::endl;
+    }
+
+    [[nodiscard]]
+    std::optional<std::string> pull(const std::string& topic) {
+        std::scoped_lock lock(mtx);
+        auto it = topicMap.find(topic);
+        if (it != topicMap.end()) {
+            if (logger) {
+                logger->log("[TopicManager] Pulled from topic: " + topic);
+            }
+            return it->second.pull();
+        }
         return std::nullopt;
     }
 
-    bool has_topic(const std::string& topic) {
-        std::lock_guard<std::mutex> lock(mtx);
-        return topicMap.find(topic) != topicMap.end();
+    [[nodiscard]]
+    bool has_topic(const std::string& topic) const {
+        std::scoped_lock lock(mtx);
+        return topicMap.contains(topic);
     }
 
-    void get_topic_list() {
-        std::cout << "[TopicManager] Current topics in map: ";
-        for (const auto& pair : topicMap) {
-            std::cout << "'" << pair.first << "' ";
+    void get_topic_list() const {
+        std::ostringstream oss;
+        oss << "[TopicManager] Current topics: ";
+        for (const auto& [name, _] : topicMap) {
+            oss << "'" << name << "' ";
         }
-        std::cout << std::endl;
+        std::cout << oss.str() << std::endl;
     }
 
 private:
@@ -48,8 +66,11 @@ private:
     TopicManager(const TopicManager&) = delete;
     TopicManager& operator=(const TopicManager&) = delete;
 
+    mutable std::mutex mtx;
+    mutable std::mutex loggerInitMutex;
+
     std::unordered_map<std::string, TopicQueue> topicMap;
-    std::mutex mtx;
+    std::unique_ptr<DiskLogger> logger = nullptr;
 };
 
 #endif

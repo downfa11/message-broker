@@ -21,6 +21,15 @@
     <ClInclude Include="command_handler.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="disk_logger.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="log_cursor.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="client_context.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="broker.cpp">
@@ -28,9 +37,6 @@
     </ClCompile>
     <ClCompile Include="buffer_pool.h">
       <Filter>헤더 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="command_handler.cpp">
-      <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="topic_manager.h">
       <Filter>헤더 파일</Filter>

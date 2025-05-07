@@ -78,3 +78,17 @@ message-broker/x64/Debug/topic_manager.obj
 message-broker/x64/Debug/vc143.idb
 message-broker/x64/Debug/vc143.pdb
 x64/Debug/message-broker.pdb
+.vs/message-broker/FileContentIndex/cd002389-1efd-4d98-9280-0c262f72eec5.vsidx
+.vs/message-broker/FileContentIndex/feb6dcbc-3e44-4453-a57f-a52d4f201922.vsidx
+.vs/message-broker-client/FileContentIndex/e99c437a-88bc-4859-afd6-6111db504ae9.vsidx
+.vs/message-broker/FileContentIndex/1d073780-6f1f-4623-b33f-119aecc227d1.vsidx
+.vs/message-broker/FileContentIndex/29dd5e3b-3878-4945-a6f5-42950439028d.vsidx
+.vs/message-broker/FileContentIndex/bad9aa93-5a99-40d8-ad95-e5ccf40cbcc0.vsidx
+.vs/message-broker/FileContentIndex/e7d104a1-463d-472a-bf83-5d9c39ad545f.vsidx
+x64/Debug/message-broker-client.pdb
+message-broker/logs.seg0
+x64/Debug/message-broker-client.exe
+x64/Debug/message-broker.exe
+message-broker/broker_log.offset
+message-broker/broker_log.seg0
+x64/Debug/message-broker.exe
