@@ -92,3 +92,8 @@ x64/Debug/message-broker.exe
 message-broker/broker_log.offset
 message-broker/broker_log.seg0
 x64/Debug/message-broker.exe
+.idea/message-broker.iml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+x64/Debug/message-broker.exe
