@@ -5,58 +5,61 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
+#include <mutex>
 
 #pragma comment(lib, "Ws2_32.lib")
 
 std::atomic<bool> running(true);
-
-std::string handle_command(const std::string& command) {
-    if (command.find("SUBSCRIBE ") == 0) {
-        std::string topic = command.substr(10);
-        std::cout << "[Client] Subscribed to topic: " << topic << std::endl;
-        return "OK\n";
-    }
-    else if (command.find("PULL") == 0) {
-        std::cout << "[Client] Pulling message for current topic." << std::endl;
-        return "OK: Dummy message\n";
-    }
-    else {
-        std::cerr << "[Client] Invalid command: " << command << std::endl;
-        return "INVALID_CMD\n";
-    }
-}
+std::mutex cout_mutex;
 
 void topic_pull_thread(SOCKET sock, const std::string& topic) {
-    std::string subscribeCommand = "SUBSCRIBE " + topic + "\n";
+
+    std::string subscribeCommand = "SUBSCRIBE " + topic;
     int bytesSent = send(sock, subscribeCommand.c_str(), static_cast<int>(subscribeCommand.length()), 0);
+
     if (bytesSent == SOCKET_ERROR) {
-        std::cerr << "Send failed. Error: " << WSAGetLastError() << std::endl;
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[error] Topic subscribe: " << WSAGetLastError() << std::endl;
         return;
     }
-    std::cout << "[Client] Sent subscribe command for topic: " << topic << std::endl;
+
+    {
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cout << "[info] subscirbed Topic: " << topic << std::endl;
+    }
 
     while (running) {
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        std::string pullCommand = "PULL " + topic + "\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        std::string pullCommand = "PULL " + topic;
         bytesSent = send(sock, pullCommand.c_str(), static_cast<int>(pullCommand.length()), 0);
+
+
         if (bytesSent == SOCKET_ERROR) {
-            std::cerr << "Send failed. Error: " << WSAGetLastError() << std::endl;
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cerr << "[error] Message pull: " << WSAGetLastError() << std::endl;
             break;
         }
-        std::cout << "[Client] Sent PULL command for topic: " << topic << std::endl;
 
         char buffer[1024];
         int bytesReceived = recv(sock, buffer, sizeof(buffer), 0);
+
         if (bytesReceived > 0) {
             std::string receivedMessage(buffer, bytesReceived);
-            std::cout << "[Client] Received message: " << receivedMessage << std::endl;
+
+            if (receivedMessage != "NO_MESSAGES") {
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cout << "[info] message: " << receivedMessage << std::endl;
+            }
         }
         else if (bytesReceived == 0) {
-            std::cout << "Connection closed." << std::endl;
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cout << "[error] Connection closed." << std::endl;
             break;
         }
         else {
-            std::cerr << "Receive failed. Error: " << WSAGetLastError() << std::endl;
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cerr << "[error] receive failed: " << WSAGetLastError() << std::endl;
             break;
         }
     }
@@ -68,18 +71,21 @@ bool init_connection(SOCKET& sock, const std::string& server_ip, uint16_t port) 
     serverAddr.sin_port = htons(port);
 
     if (inet_pton(AF_INET, server_ip.c_str(), &serverAddr.sin_addr) <= 0) {
-        std::cerr << "Invalid address or address not supported." << std::endl;
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[error] Invalid Broker Address." << std::endl;
         return false;
     }
 
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock == INVALID_SOCKET) {
-        std::cerr << "Socket creation failed. Error: " << WSAGetLastError() << std::endl;
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[error] socket WSAGetLastError: " << WSAGetLastError() << std::endl;
         return false;
     }
 
     if (connect(sock, (SOCKADDR*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-        std::cerr << "Connection failed. Error: " << WSAGetLastError() << std::endl;
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[error] connect WSAGetLastError: " << WSAGetLastError() << std::endl;
         closesocket(sock);
         return false;
     }
@@ -90,7 +96,8 @@ bool init_connection(SOCKET& sock, const std::string& server_ip, uint16_t port) 
 int main() {
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        std::cerr << "WSAStartup failed." << std::endl;
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[error] WSAStartup failed." << std::endl;
         return 1;
     }
 
@@ -99,11 +106,12 @@ int main() {
     uint16_t port = 12345;
 
     if (!init_connection(clientSocket, server_ip, port)) {
-        std::cerr << "Failed to connect to the server." << std::endl;
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[error] Connect failed for broker." << std::endl;
         WSACleanup();
         return 1;
     }
-    std::cout << "Connected to the server." << std::endl;
+    std::cout << "[info] Connect successed for broker." << std::endl;
 
     std::string topic = "topic1";
     std::thread pullThread(topic_pull_thread, clientSocket, topic);

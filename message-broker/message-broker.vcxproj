@@ -131,13 +131,14 @@
   <ItemGroup>
     <ClInclude Include="client_context.h" />
     <ClInclude Include="command_handler.h" />
-    <ClInclude Include="disk_logger.h" />
-    <ClInclude Include="log_cursor.h" />
-    <ClInclude Include="topic.h" />
+    <ClInclude Include="disk_handler.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="broker.cpp" />
     <ClCompile Include="buffer_pool.h" />
+    <ClCompile Include="command_handler.cpp" />
+    <ClCompile Include="disk_handler.cpp" />
+    <ClCompile Include="topic_manager.cpp" />
     <ClCompile Include="topic_manager.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

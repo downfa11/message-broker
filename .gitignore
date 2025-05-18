@@ -97,3 +97,14 @@ x64/Debug/message-broker.exe
 .idea/modules.xml
 .idea/vcs.xml
 x64/Debug/message-broker.exe
+.vs/message-broker-client/FileContentIndex/558af114-211d-4e98-bad0-a7db0d2886f1.vsidx
+.vs/message-broker/FileContentIndex/3e66d977-dadd-4c03-864c-967865f3c936.vsidx
+.vs/message-broker/FileContentIndex/a23f6427-714a-4005-96e7-15ab7e918b8f.vsidx
+.vs/message-broker/FileContentIndex/a37d3a1e-c31d-49a4-be46-2f550c73f184.vsidx
+.vs/message-broker/FileContentIndex/dd7f5228-3d61-4370-9cf8-3b22881be396.vsidx
+.vs/message-broker/FileContentIndex/f88e9247-bd95-4339-b53e-3a8aa94fba89.vsidx
+.vs/message-broker/v17/ipch/AutoPCH/2989ffea108f0b74/TOPIC_MANAGER.ipch
+.vs/message-broker/v17/ipch/AutoPCH/46b00aecde6eadc2/DISK_HANDLER.ipch
+.vs/message-broker/v17/ipch/AutoPCH/b7806ccdbb4fb396/BUFFER_POOL.ipch
+.vs/message-broker/v17/ipch/AutoPCH/f9674b497b89337d/TOPIC_MANAGER.ipch
+message-broker/broker_log_00000.log

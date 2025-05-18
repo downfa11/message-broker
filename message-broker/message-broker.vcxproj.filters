@@ -15,16 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="topic.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
     <ClInclude Include="command_handler.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="disk_logger.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="log_cursor.h">
+    <ClInclude Include="disk_handler.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="client_context.h">
@@ -40,6 +34,15 @@
     </ClCompile>
     <ClCompile Include="topic_manager.h">
       <Filter>헤더 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="topic_manager.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="command_handler.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="disk_handler.cpp">
+      <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
