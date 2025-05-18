@@ -1,5 +1,4 @@
-#ifndef BUFFER_POOL_H
-#define BUFFER_POOL_H
+#pragma once
 
 #include <vector>
 #include <mutex>
@@ -32,5 +31,3 @@ private:
     std::vector<char*> pool;
     size_t bufSize;
 };
-
-#endif

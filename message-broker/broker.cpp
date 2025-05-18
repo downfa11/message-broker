@@ -6,19 +6,19 @@
 #include <map>
 #include <atomic>
 #include <mutex>
+#include <random>
 
+#include "topic_manager.h"
 #include "buffer_pool.h"
 #include "command_handler.h"
-#include "topic_manager.h"
-#include "disk_logger.h"
-#include "log_cursor.h"
-#include "client_context.h"
+
 
 #pragma comment(lib, "Ws2_32.lib")
 
-// IOCP
 HANDLE hCompletionPort = NULL;
 std::atomic<bool> running(true);
+std::mutex cout_mutex;
+
 
 void iocp_worker(HANDLE hCompletionPort) {
     DWORD bytesTransferred;
@@ -26,62 +26,80 @@ void iocp_worker(HANDLE hCompletionPort) {
     LPOVERLAPPED overlapped;
     ClientContext* context;
 
-    std::shared_ptr<DiskLogger> logger = std::make_shared<DiskLogger>("logs", 4096);
-    CommandHandler commandHandler(logger);
-
     while (running) {
         if (!GetQueuedCompletionStatus(hCompletionPort, &bytesTransferred, &completionKey, &overlapped, INFINITE)) {
-            std::cerr << "GetQueuedCompletionStatus failed. Error: " << GetLastError() << std::endl;
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cerr << "[error] GetQueuedCompletionStatus: " << GetLastError() << std::endl;
             continue;
         }
 
         context = reinterpret_cast<ClientContext*>(completionKey);
 
-        if (bytesTransferred > 0) {
-            std::string receivedData(context->buffer, bytesTransferred);
-            std::cout << "[" << context->sock << "] Received data: " << receivedData << std::endl;
-
-            std::string response = commandHandler.handle_command(receivedData, context);
-
-            WSABUF wsabuf;
-            wsabuf.buf = const_cast<char*>(response.c_str());
-            wsabuf.len = static_cast<ULONG>(response.size());
-
-            DWORD bytesSent = 0;
-            int sendResult = WSASend(context->sock, &wsabuf, 1, &bytesSent, 0, NULL, NULL);
-            if (sendResult == SOCKET_ERROR) {
-                int error = WSAGetLastError();
-                std::cerr << "Send failed. Error: " << error << std::endl;
-                break;
+        if (overlapped == &context->recv_overlapped) {
+            if (bytesTransferred == 0) {
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cerr << "[" << context->sock << "] connection closed." << std::endl;
+                closesocket(context->sock);
+                continue;
             }
-            std::cout << "[" << context->sock << "] Response sent: " << response << std::endl;
+
+            std::string receivedData(context->buffer, bytesTransferred);
+            std::string response = context->command_handler->handle_command(receivedData, context);
+
+            if (!response.empty()) {
+                WSABUF wsabuf;
+                wsabuf.buf = const_cast<char*>(response.c_str());
+                wsabuf.len = static_cast<ULONG>(response.size());
+
+                DWORD bytesSent = 0;
+                DWORD flags = 0;
+
+                ZeroMemory(&context->send_overlapped, sizeof(OVERLAPPED));
+                int sendResult = WSASend(context->sock, &wsabuf, 1, &bytesSent, flags, &context->send_overlapped, NULL);
+
+                if (sendResult == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
+                    std::lock_guard<std::mutex> lock(cout_mutex);
+                    std::cerr << "[" << context->sock << " error] WSASend: " << WSAGetLastError() << std::endl;
+                    closesocket(context->sock);
+                    continue;
+                }
+
+                if (response != "NO_MESSAGES") {
+                    std::lock_guard<std::mutex> lock(cout_mutex);
+                    std::cout << "[" << context->sock << "] sent: " << response << std::endl;
+                }
+            }
+
+            ZeroMemory(&context->recv_overlapped, sizeof(OVERLAPPED));
+            WSABUF wsabuf;
+            wsabuf.buf = context->buffer;
+            wsabuf.len = sizeof(context->buffer);
+
+            DWORD flags = 0;
+            DWORD recvBytes = 0;
+            int result = WSARecv(context->sock, &wsabuf, 1, &recvBytes, &flags, &context->recv_overlapped, NULL);
+            if (result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cerr << "[" << context->sock << "] WSARecv failed: " << WSAGetLastError() << std::endl;
+                closesocket(context->sock);
+            }
+        }
+        else if (overlapped == &context->send_overlapped) {
+            // std::cout << "[" << context->sock << "] send complete." << std::endl;
         }
         else {
-            std::cerr << "[" << context->sock << "] Closing socket." << std::endl;
-            closesocket(context->sock);
-            continue;
-        }
-
-        ZeroMemory(&context->buffer, sizeof(context->buffer));
-
-        WSABUF wsabuf;
-        wsabuf.buf = context->buffer;
-        wsabuf.len = sizeof(context->buffer);
-        DWORD recvBytes = 0;
-        DWORD recvFlags = 0;
-
-        int result = WSARecv(context->sock, &wsabuf, 1, &recvBytes, &recvFlags, &context->overlapped, NULL);
-        if (result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
-            std::cerr << "[" << context->sock << "] WSARecv failed. Error: " << WSAGetLastError() << std::endl;
-            closesocket(context->sock);
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cerr << "[" << context->sock << "] unknown" << std::endl;
         }
     }
 }
 
+
 bool init_iocp(SOCKET& listenSocket) {
     hCompletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
     if (hCompletionPort == NULL) {
-        std::cerr << "Failed to hCompletionPort. Error: " << GetLastError() << std::endl;
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[error] hCompletionPort: " << GetLastError() << std::endl;
         return false;
     }
 
@@ -89,37 +107,56 @@ bool init_iocp(SOCKET& listenSocket) {
 }
 
 void client_connection_handler(SOCKET clientSocket, BufferPool& bufferPool, const std::string& baseFilename, size_t segmentSize) {
-    std::cout << "[Server] client_connection_handler: " << clientSocket << std::endl;
+    std::lock_guard<std::mutex> lock(cout_mutex);
+    std::cout << "[info] client_connection_handler: " << clientSocket << std::endl;
 
-    ClientContext* context = new ClientContext(bufferPool, std::make_shared<DiskLogger>(baseFilename, segmentSize));
+    ClientContext* context = new ClientContext(bufferPool, std::make_shared<DiskHandler>(baseFilename, segmentSize));
     context->sock = clientSocket;
+    context->command_handler = std::make_unique<CommandHandler>(context->disk_handler);
 
     if (CreateIoCompletionPort((HANDLE)clientSocket, hCompletionPort, (ULONG_PTR)context, 0) == NULL) {
-        std::cerr << "Failed to associate client. Error: " << GetLastError() << std::endl;
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[error] CreateIoCompletionPort: " << GetLastError() << std::endl;
         closesocket(clientSocket);
         delete context;
         return;
     }
 
-    DWORD flags = 0;
+    ZeroMemory(&context->recv_overlapped, sizeof(OVERLAPPED));
+
     WSABUF wsabuf;
     wsabuf.buf = context->buffer;
     wsabuf.len = sizeof(context->buffer);
     DWORD recvBytes = 0;
-    DWORD recvFlags = 0;
+    DWORD flags = 0;
 
-    int result = WSARecv(clientSocket, &wsabuf, 1, &recvBytes, &recvFlags, &context->overlapped, NULL);
+    int result = WSARecv(clientSocket, &wsabuf, 1, &recvBytes, &flags, &context->recv_overlapped, NULL);
     if (result == SOCKET_ERROR) {
         int error = WSAGetLastError();
         if (error != WSA_IO_PENDING) {
-            std::cerr << "[Server] Error in WSARecv: " << error << std::endl;
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cerr << "[error] WSARecv: " << error << std::endl;
             closesocket(clientSocket);
             delete context;
             return;
         }
     }
+}
 
-    std::cout << "[Server] Waiting for data from client..." << std::endl;
+std::string random_string(size_t length) {
+    static const char charset[] =
+        "0123456789"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz";
+    static thread_local std::mt19937 gen{ std::random_device{}() };
+    static thread_local std::uniform_int_distribution<> dist(0, sizeof(charset) - 2);
+
+    std::string result;
+    result.reserve(length);
+    for (size_t i = 0; i < length; ++i) {
+        result += charset[dist(gen)];
+    }
+    return result;
 }
 
 int main() {
@@ -140,7 +177,8 @@ int main() {
     size_t segmentSize = 1024 * 1024;
 
     if (!init_iocp(listenSocket)) {
-        std::cerr << "init failed IOCP" << std::endl;
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[error] init failed IOCP" << std::endl;
         closesocket(listenSocket);
         WSACleanup();
         return 1;
@@ -149,17 +187,20 @@ int main() {
     std::thread iocpThread(iocp_worker, hCompletionPort);
     iocpThread.detach();
 
+    // test topic
     std::thread([]() {
-        int count = 0;
         auto& topicManager = TopicManager::get_instance();
+        std::string topic = "topic1";
 
         while (true) {
-            std::string topic = "topic1";
-            std::string msg = "msg " + std::to_string(count++);
+            std::string msg = random_string(8);
 
             topicManager.publish(topic, msg);
-            std::cout << "[test] Published to topic: " << topic << ": " << msg << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            {
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cout << "[test] Published to " << topic << " - " << msg << std::endl;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
         }).detach();
 

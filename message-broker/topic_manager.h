@@ -1,76 +1,43 @@
-#ifndef TOPIC_MANAGER_H
-#define TOPIC_MANAGER_H
+#pragma once
 
 #include <unordered_map>
 #include <mutex>
 #include <memory>
 #include <optional>
-#include <sstream>
-#include <iostream>
-#include "topic.h"
-#include "disk_logger.h"
+#include <queue>
+#include <string>
+
+#include "disk_handler.h"
+
+class TopicQueue {
+private:
+    std::mutex mtx;
+    std::queue<std::string> q;
+
+public:
+    void publish(const std::string& msg);
+    std::optional<std::string> pull();
+};
 
 class TopicManager {
 public:
-    static TopicManager& get_instance() {
-        static TopicManager instance;
-        return instance;
-    }
+    static TopicManager& get_instance();
 
-    void init_logger(const std::string& logPath) {
-        std::scoped_lock lock(loggerInitMutex);
-        if (!logger) {
-            logger = std::make_unique<DiskLogger>(logPath, 1024 * 1024);
-        }
-    }
-
-    void publish(const std::string& topic, const std::string& msg) {
-        std::scoped_lock lock(mtx);
-        topicMap[topic].publish(msg);
-        if (logger) {
-            logger->log("[TopicManager] Published to " + topic + ": " + msg);
-        }
-    }
-
-    [[nodiscard]]
-    std::optional<std::string> pull(const std::string& topic) {
-        std::scoped_lock lock(mtx);
-        auto it = topicMap.find(topic);
-        if (it != topicMap.end()) {
-            if (logger) {
-                logger->log("[TopicManager] Pulled from topic: " + topic);
-            }
-            return it->second.pull();
-        }
-        return std::nullopt;
-    }
-
-    [[nodiscard]]
-    bool has_topic(const std::string& topic) const {
-        std::scoped_lock lock(mtx);
-        return topicMap.contains(topic);
-    }
-
-    void get_topic_list() const {
-        std::ostringstream oss;
-        oss << "[TopicManager] Current topics: ";
-        for (const auto& [name, _] : topicMap) {
-            oss << "'" << name << "' ";
-        }
-        std::cout << oss.str() << std::endl;
-    }
+    void init_logger(const std::string& logPath);
+    void publish(const std::string& topic, const std::string& msg);
+    [[nodiscard]] std::optional<std::string> pull(const std::string& topic);
+    [[nodiscard]] bool has_topic(const std::string& topic) const;
+    void get_topic_list() const;
 
 private:
-    TopicManager() = default;
-    ~TopicManager() = default;
+    TopicManager();
+    ~TopicManager();
     TopicManager(const TopicManager&) = delete;
     TopicManager& operator=(const TopicManager&) = delete;
 
     mutable std::mutex mtx;
-    mutable std::mutex loggerInitMutex;
+    mutable std::mutex disk_mutex;
 
-    std::unordered_map<std::string, TopicQueue> topicMap;
-    std::unique_ptr<DiskLogger> logger = nullptr;
+    std::unordered_map<std::string, TopicQueue> topic_map;
+    std::unique_ptr<DiskHandler> disk_handler = nullptr;
 };
-
-#endif

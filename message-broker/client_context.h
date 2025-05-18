@@ -6,26 +6,26 @@
 #include <memory>
 #include <unordered_set>
 
-#include "buffer_pool.h"
-#include "command_handler.h"
-#include "log_cursor.h"
-#include "disk_logger.h"
-
+#include "disk_handler.h"
 
 class CommandHandler;
+class BufferPool;
 
 struct ClientContext {
-    OVERLAPPED overlapped;
+    OVERLAPPED recv_overlapped{};
+    OVERLAPPED send_overlapped{};
+
     SOCKET sock;
     BufferPool& pool;
-    std::shared_ptr<DiskLogger> diskLogger;
-    std::unique_ptr<CommandHandler> commandHandler;
+    std::shared_ptr<DiskHandler> disk_handler;
+    std::unique_ptr<CommandHandler> command_handler;
     LogCursor cursor;
     std::unordered_set<std::string> currentTopics;
     char buffer[1024];
 
-    ClientContext(BufferPool& p, std::shared_ptr<DiskLogger> d)
-        : sock(INVALID_SOCKET), pool(p), diskLogger(std::move(d)), commandHandler(nullptr) {
-        ZeroMemory(&overlapped, sizeof(overlapped));
+    ClientContext(BufferPool& p, std::shared_ptr<DiskHandler> d)
+        : sock(INVALID_SOCKET), pool(p), disk_handler(std::move(d)), command_handler(nullptr) {
+        ZeroMemory(&recv_overlapped, sizeof(recv_overlapped));
+        ZeroMemory(&send_overlapped, sizeof(send_overlapped));
     }
 };
