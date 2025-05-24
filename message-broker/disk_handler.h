@@ -24,7 +24,7 @@ public:
     DiskHandler(DiskHandler&&) noexcept = default;
     DiskHandler& operator=(DiskHandler&&) noexcept = default;
 
-    void log(std::string_view message);
+    void log(std::string_view level, std::string_view message);
     std::optional<std::string> read_next(LogCursor& cursor);
     std::vector<std::string> read_all(size_t segmentIndex);
 

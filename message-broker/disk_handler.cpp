@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <chrono>
 #include <format>
 
 DiskHandler::DiskHandler(std::string baseFilename, size_t segmentSize)
@@ -19,26 +20,32 @@ DiskHandler::DiskHandler(std::string baseFilename, size_t segmentSize)
 DiskHandler::~DiskHandler() {
     stopFlush = true;
 
-    if (flushThread.joinable()) {
-        flushThread.join();
-    }
-
     flush();
     close_handles();
     save_offset();
 }
 
-void DiskHandler::log(std::string_view message) {
-    std::lock_guard lock(mtx);
-    size_t len = message.size();
 
-    if (currentOffset + len + 1 >= segmentSize) {
+void DiskHandler::log(std::string_view level, std::string_view message) {
+    std::lock_guard lock(mtx);
+
+    auto now = std::chrono::system_clock::now();
+    auto epoch = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+
+    std::string formatted = std::format("[{}] timestamp: {}, message: {}\n", level, epoch, message);
+    size_t len = formatted.size();
+
+    if (currentOffset + len >= segmentSize) {
         rotate_segment();
     }
 
-    std::memcpy(static_cast<char*>(mapView) + currentOffset, message.data(), len);
-    reinterpret_cast<char*>(mapView)[currentOffset + len] = '\n';
-    currentOffset += len + 1;
+    if (currentOffset + len >= segmentSize) {
+        std::cerr << "[disk error] log too large for segment" << std::endl;
+        return;
+    }
+
+    std::memcpy(static_cast<char*>(mapView) + currentOffset, formatted.data(), len);
+    currentOffset += len;
 }
 
 std::optional<std::string> DiskHandler::read_next(LogCursor& cursor) {
