@@ -43,14 +43,15 @@ private:
     std::jthread flushThread;
     std::atomic<bool> stopFlush;
 
-    void rotate_segment();
+    bool rotate_segment();
     void close_handles();
-    void open_new_segment();
+    bool open_new_segment();
     std::string get_segment_filename(size_t index) const;
     void flush_loop();
     void flush();
     void save_offset() const;
     void load_offset();
     HANDLE open_segment(size_t index);
-    void* map_view(HANDLE h);
+
+    std::string convert_timestamp();
 };

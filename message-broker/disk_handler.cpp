@@ -28,20 +28,21 @@ DiskHandler::~DiskHandler() {
 
 void DiskHandler::log(std::string_view level, std::string_view message) {
     std::lock_guard lock(mtx);
-
-    auto now = std::chrono::system_clock::now();
-    auto epoch = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-
-    std::string formatted = std::format("[{}] timestamp: {}, message: {}\n", level, epoch, message);
+   
+    std::string timestamp = convert_timestamp();
+    std::string formatted = std::format("[{}] timestamp: {}, message: {}\n", level, timestamp, message);
     size_t len = formatted.size();
 
-    if (currentOffset + len >= segmentSize) {
-        rotate_segment();
+    if (len >= segmentSize) {
+        std::cerr << "[disk error] log too large to fit in segment" << std::endl;
+        return;
     }
 
     if (currentOffset + len >= segmentSize) {
-        std::cerr << "[disk error] log too large for segment" << std::endl;
-        return;
+        if (!rotate_segment()) {
+            std::cerr << "[disk error] rotate_segment failed" << std::endl;
+            return;
+        }
     }
 
     std::memcpy(static_cast<char*>(mapView) + currentOffset, formatted.data(), len);
@@ -153,36 +154,36 @@ void DiskHandler::flush() {
     }
 }
 
-void DiskHandler::rotate_segment() {
+bool DiskHandler::rotate_segment() {
     flush();
     close_handles();
     currentSegmentIndex++;
     currentOffset = 0;
-    open_new_segment();
+    return open_new_segment();
 }
 
-void DiskHandler::open_new_segment() {
+bool DiskHandler::open_new_segment() {
     std::string filename = get_segment_filename(currentSegmentIndex);
 
     hFile = CreateFileA(filename.c_str(), GENERIC_WRITE | GENERIC_READ,
         0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile == INVALID_HANDLE_VALUE) {
         std::cerr << "[disk error] Failed to open file: " << filename << std::endl;
-        return;
+        return false;
     }
 
     if (SetFilePointer(hFile, static_cast<LONG>(segmentSize), nullptr, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
         std::cerr << "[disk error] Failed to set file pointer\n";
         CloseHandle(hFile);
         hFile = INVALID_HANDLE_VALUE;
-        return;
+        return false;
     }
 
     if (!SetEndOfFile(hFile)) {
         std::cerr << "[disk error] Failed to set end of file\n";
         CloseHandle(hFile);
         hFile = INVALID_HANDLE_VALUE;
-        return;
+        return false;
     }
 
     hMap = CreateFileMappingA(hFile, nullptr, PAGE_READWRITE, 0, static_cast<DWORD>(segmentSize), nullptr);
@@ -190,7 +191,7 @@ void DiskHandler::open_new_segment() {
         std::cerr << "[disk error] Failed to create file mapping\n";
         CloseHandle(hFile);
         hFile = INVALID_HANDLE_VALUE;
-        return;
+        return false;
     }
 
     mapView = MapViewOfFile(hMap, FILE_MAP_ALL_ACCESS, 0, 0, segmentSize);
@@ -200,8 +201,10 @@ void DiskHandler::open_new_segment() {
         CloseHandle(hFile);
         hMap = nullptr;
         hFile = INVALID_HANDLE_VALUE;
-        return;
+        return false;
     }
+
+    return true;
 }
 
 void DiskHandler::close_handles() {
@@ -240,4 +243,17 @@ void DiskHandler::load_offset() {
 void DiskHandler::save_offset() const {
     std::ofstream file(baseName + ".meta", std::ios::trunc);
     file << currentSegmentIndex << ' ' << currentOffset;
+}
+
+std::string DiskHandler::convert_timestamp() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+    std::tm local_tm;
+
+    localtime_s(&local_tm, &now_c);
+
+    char time_buf[32];
+    std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", &local_tm);
+
+    return std::string(time_buf);
 }
