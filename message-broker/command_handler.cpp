@@ -5,34 +5,34 @@
 
 std::string CommandHandler::handle_command(const std::string& rawCmd, ClientContext* context) {
     std::string cmd = trim(rawCmd);
-    disk_handler->log("received command: " + cmd);
+    disk_handler->log("info", "Received command: " + cmd);
 
     if (starts_with(cmd, "SUBSCRIBE ")) {
         std::string newTopic = cmd.substr(10);
         context->currentTopics.insert(newTopic);
-        disk_handler->log("[info] Subscribed to topic: " + newTopic);
+        disk_handler->log("info", "Subscribed to topic: " + newTopic);
         return "OK";
     }
 
     if (starts_with(cmd, "PULL")) {
         if (context->currentTopics.empty()) {
-            disk_handler->log("[info] No topic subscribed yet.");
+            disk_handler->log("error", "No topic subscribed yet.");
             return "NO_TOPIC";
         }
 
         for (const auto& topic : context->currentTopics) {
             if (!TopicManager::get_instance().has_topic(topic)) {
-                disk_handler->log("[info] No such topic: " + topic);
+                disk_handler->log("error", "No such topic: " + topic);
                 continue;
             }
 
             auto msg = TopicManager::get_instance().pull(topic);
             if (msg) {
-                disk_handler->log("[info] Pulled message from topic: " + topic);
+                disk_handler->log("info", "Pulled message from topic: " + topic);
                 return msg.value();
             }
             else {
-                disk_handler->log("[info] Topic " + topic + " is empty.");
+                disk_handler->log("info", "Topic " + topic + " is empty.");
             }
         }
 
@@ -42,17 +42,17 @@ std::string CommandHandler::handle_command(const std::string& rawCmd, ClientCont
     if (starts_with(cmd, "PUBLISH ")) { // PUBLISH <topic> <message>
         size_t firstSpace = cmd.find(' ', 8);
         if (firstSpace == std::string::npos) {
-            disk_handler->log("[info] Invalid PUBLISH command format.");
+            disk_handler->log("error", "Invalid PUBLISH command format.");
             return "INVALID_CMD: " + cmd;
         }
         std::string topic = cmd.substr(8, firstSpace - 8);
         std::string message = cmd.substr(firstSpace + 1);
         TopicManager::get_instance().publish(topic, message);
-        disk_handler->log("[info] Published message to topic: " + topic);
+        disk_handler->log("info", "Published message to topic: " + topic);
         return "OK";
     }
 
-    disk_handler->log("[info] Invalid command: " + cmd);
+    disk_handler->log("info", "Invalid command: " + cmd);
     return "INVALID_CMD: " + cmd;
 }
 

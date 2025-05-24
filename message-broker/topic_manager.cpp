@@ -36,7 +36,7 @@ void TopicManager::publish(const std::string& topic, const std::string& msg) {
     std::scoped_lock lock(mtx);
     topic_map[topic].publish(msg);
     if (disk_handler) {
-        disk_handler->log("[info] Published to " + topic + ": " + msg);
+        disk_handler->log("info", "Published to " + topic + ": " + msg);
     }
 }
 
@@ -45,7 +45,7 @@ std::optional<std::string> TopicManager::pull(const std::string& topic) {
     auto it = topic_map.find(topic);
     if (it != topic_map.end()) {
         if (disk_handler) {
-            disk_handler->log("[info] Pulled from topic: " + topic);
+            disk_handler->log("info", "Pulled from topic: " + topic);
         }
         return it->second.pull();
     }
