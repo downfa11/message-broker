@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <vector>
 
 #pragma comment(lib, "Ws2_32.lib")
 
@@ -101,24 +102,42 @@ int main() {
         return 1;
     }
 
-    SOCKET clientSocket;
+    int count;
+    std::cout << "Input thread count: ";
+    std::cin >> count;
+
     std::string server_ip = "127.0.0.1";
     uint16_t port = 12345;
-
-    if (!init_connection(clientSocket, server_ip, port)) {
-        std::lock_guard<std::mutex> lock(cout_mutex);
-        std::cerr << "[error] Connect failed for broker." << std::endl;
-        WSACleanup();
-        return 1;
-    }
-    std::cout << "[info] Connect successed for broker." << std::endl;
-
     std::string topic = "topic1";
-    std::thread pullThread(topic_pull_thread, clientSocket, topic);
-    pullThread.join();
 
-    closesocket(clientSocket);
+    std::vector<std::thread> threads;
+    std::vector<SOCKET> sockets;
+
+    for (int i = 0; i < count; ++i) {
+        SOCKET clientSocket;
+        if (!init_connection(clientSocket, server_ip, port)) {
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cerr << "[error] Connect failed for broker #" << i << std::endl;
+            continue;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cout << "[info] Connect successed for broker #" << i << std::endl;
+        }
+
+        threads.emplace_back(topic_pull_thread, clientSocket, topic);
+        sockets.push_back(clientSocket);
+    }
+
+    for (auto& t : threads) {
+        if (t.joinable()) t.join();
+    }
+
+    for (SOCKET s : sockets) {
+        closesocket(s);
+    }
+
     WSACleanup();
-
     return 0;
 }
