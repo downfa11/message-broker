@@ -23,7 +23,7 @@ class TopicManager {
 public:
     static TopicManager& get_instance();
 
-    void init_logger(const std::string& logPath);
+    void init_logger(std::shared_ptr<DiskHandler> diskHandler);
     void publish(const std::string& topic, const std::string& msg);
     [[nodiscard]] std::optional<std::string> pull(const std::string& topic);
     [[nodiscard]] bool has_topic(const std::string& topic) const;
@@ -39,5 +39,5 @@ private:
     mutable std::mutex disk_mutex;
 
     std::unordered_map<std::string, TopicQueue> topic_map;
-    std::unique_ptr<DiskHandler> disk_handler = nullptr;
+    std::shared_ptr<DiskHandler> disk_handler = nullptr;
 };

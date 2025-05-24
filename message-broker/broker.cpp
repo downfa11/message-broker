@@ -106,11 +106,11 @@ bool init_iocp(SOCKET& listenSocket) {
     return true;
 }
 
-void client_connection_handler(SOCKET clientSocket, BufferPool& bufferPool, const std::string& baseFilename, size_t segmentSize) {
+void client_connection_handler(SOCKET clientSocket, BufferPool& bufferPool, std::shared_ptr<DiskHandler> sharedDiskHandler) {
     std::lock_guard<std::mutex> lock(cout_mutex);
     std::cout << "[info] client_connection_handler: " << clientSocket << std::endl;
 
-    ClientContext* context = new ClientContext(bufferPool, std::make_shared<DiskHandler>(baseFilename, segmentSize));
+    ClientContext* context = new ClientContext(bufferPool, sharedDiskHandler);
     context->sock = clientSocket;
     context->command_handler = std::make_unique<CommandHandler>(context->disk_handler);
 
@@ -175,6 +175,8 @@ int main() {
 
     std::string baseFilename = "broker_log";
     size_t segmentSize = 1024 * 1024;
+    std::shared_ptr<DiskHandler> sharedDiskHandler = std::make_shared<DiskHandler>(baseFilename, segmentSize);
+    
 
     if (!init_iocp(listenSocket)) {
         std::lock_guard<std::mutex> lock(cout_mutex);
@@ -186,6 +188,8 @@ int main() {
 
     std::thread iocpThread(iocp_worker, hCompletionPort);
     iocpThread.detach();
+
+    TopicManager::get_instance().init_logger(sharedDiskHandler);
 
     // test topic
     std::thread([]() {
@@ -207,7 +211,7 @@ int main() {
         while (true) {
             SOCKET clientSocket = accept(listenSocket, NULL, NULL);
             if (clientSocket != INVALID_SOCKET) {
-                client_connection_handler(clientSocket, bufferPool, baseFilename, segmentSize);
+                client_connection_handler(clientSocket, bufferPool, sharedDiskHandler);
             }
         }
 
