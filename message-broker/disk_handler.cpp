@@ -4,6 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <format>
+#include <filesystem>
 
 DiskHandler::DiskHandler(std::string baseFilename, size_t segmentSize)
     : baseName(std::move(baseFilename)),
@@ -39,12 +40,15 @@ void DiskHandler::log(std::string_view level, std::string_view message) {
     }
 
     if (currentOffset + len >= segmentSize) {
+        std::cerr << "[debug] rotate_segment, currentOffset=" << currentOffset << ", length=" << len << ", segmentSize=" << segmentSize << std::endl;
+
         if (!rotate_segment()) {
             std::cerr << "[disk error] rotate_segment failed" << std::endl;
             return;
         }
     }
 
+    // std::cout << "[disk log] log(" << formatted.data();
     std::memcpy(static_cast<char*>(mapView) + currentOffset, formatted.data(), len);
     currentOffset += len;
 }
@@ -148,9 +152,18 @@ void DiskHandler::flush_loop() {
 }
 
 void DiskHandler::flush() {
-    std::lock_guard lock(mtx);
-    if (mapView) {
-        FlushViewOfFile(mapView, 0);
+    try {
+        if (mapView) {
+            if (!FlushViewOfFile(mapView, 0)) {
+                std::cerr << "[disk error] FlushViewOfFile failed: " << GetLastError() << std::endl;
+            }
+        }
+    }
+    catch (const std::system_error& e) {
+        std::cerr << "[disk error] std::system_error in flush(): " << e.what() << std::endl;
+    }
+    catch (...) {
+        std::cerr << "[disk error] exception in flush()" << std::endl;
     }
 }
 
@@ -159,44 +172,55 @@ bool DiskHandler::rotate_segment() {
     close_handles();
     currentSegmentIndex++;
     currentOffset = 0;
-    return open_new_segment();
+
+    std::cerr << "[debug] rotate_segment: new index = " << currentSegmentIndex << ", offset reset to 0"<< std::endl;
+
+    if (!open_new_segment()) {
+        std::cerr << "[disk error] open_new_segment error. Reverting to index 0." << std::endl;
+        currentSegmentIndex = 0;
+        currentOffset = 0;
+        if (!open_new_segment()) {
+            std::cerr << "[disk error] init offset, segment. open_new_segment error again." << std::endl;
+            return false;
+        }
+    }
+
+    save_offset();
+    return true;
 }
 
 bool DiskHandler::open_new_segment() {
+    std::cout << "open_new_segment " << currentSegmentIndex << std::endl;
     std::string filename = get_segment_filename(currentSegmentIndex);
 
     hFile = CreateFileA(filename.c_str(), GENERIC_WRITE | GENERIC_READ,
         0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+
     if (hFile == INVALID_HANDLE_VALUE) {
-        std::cerr << "[disk error] Failed to open file: " << filename << std::endl;
+        std::cerr << "[disk error] INVALID_HANDLE_VALUE: " << filename << std::endl;
         return false;
     }
 
-    if (SetFilePointer(hFile, static_cast<LONG>(segmentSize), nullptr, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
-        std::cerr << "[disk error] Failed to set file pointer\n";
+    LARGE_INTEGER li;
+    li.QuadPart = static_cast<LONGLONG>(segmentSize);
+    if (!SetFilePointerEx(hFile, li, nullptr, FILE_BEGIN) || !SetEndOfFile(hFile)) {
+        std::cerr << "[disk error] Failed to set file size" << std::endl;
         CloseHandle(hFile);
         hFile = INVALID_HANDLE_VALUE;
         return false;
     }
 
-    if (!SetEndOfFile(hFile)) {
-        std::cerr << "[disk error] Failed to set end of file\n";
-        CloseHandle(hFile);
-        hFile = INVALID_HANDLE_VALUE;
-        return false;
-    }
-
-    hMap = CreateFileMappingA(hFile, nullptr, PAGE_READWRITE, 0, static_cast<DWORD>(segmentSize), nullptr);
-    if (hMap == nullptr) {
-        std::cerr << "[disk error] Failed to create file mapping\n";
+    hMap = CreateFileMappingA(hFile, nullptr, PAGE_READWRITE, 0, segmentSize, nullptr);
+    if (!hMap) {
+        std::cerr << "[disk error] CreateFileMappingA error" << std::endl;
         CloseHandle(hFile);
         hFile = INVALID_HANDLE_VALUE;
         return false;
     }
 
     mapView = MapViewOfFile(hMap, FILE_MAP_ALL_ACCESS, 0, 0, segmentSize);
-    if (mapView == nullptr) {
-        std::cerr << "[disk error] Failed to map view of file\n";
+    if (!mapView) {
+        std::cerr << "[disk error] MapViewOfFile error" << std::endl;
         CloseHandle(hMap);
         CloseHandle(hFile);
         hMap = nullptr;
@@ -206,6 +230,8 @@ bool DiskHandler::open_new_segment() {
 
     return true;
 }
+
+
 
 void DiskHandler::close_handles() {
     if (mapView) {
@@ -235,15 +261,42 @@ std::string DiskHandler::get_segment_filename(size_t index) const {
 
 void DiskHandler::load_offset() {
     std::ifstream file(baseName + ".meta");
-    if (file) {
-        file >> currentSegmentIndex >> currentOffset;
+    if (!file) {
+        std::cerr << "[debug] No meta file found" << std::endl;
+        currentSegmentIndex = 0;
+        currentOffset = 0;
+        return;
+    }
+
+    if (!(file >> currentSegmentIndex >> currentOffset)) {
+        std::cerr << "[debug] Failed to read meta file, initing offset." << std::endl;
+        currentSegmentIndex = 0;
+        currentOffset = 0;
+        return;
+    }
+
+    std::string filename = get_segment_filename(currentSegmentIndex);
+    if (!std::filesystem::exists(filename)) {
+        std::cerr << "[disk warn] Missing log file " << filename << ". Resetting offset.\n";
+        currentSegmentIndex = 0;
+        currentOffset = 0;
+    }
+    else {
+        std::cerr << "[debug] offset: segment=" << currentSegmentIndex << ", offset=" << currentOffset << std::endl;
     }
 }
 
 void DiskHandler::save_offset() const {
     std::ofstream file(baseName + ".meta", std::ios::trunc);
+    if (!file) {
+        std::cerr << "[disk error] save_offset error" << std::endl;
+        return;
+    }
+
     file << currentSegmentIndex << ' ' << currentOffset;
+    file.flush();
 }
+
 
 std::string DiskHandler::convert_timestamp() {
     auto now = std::chrono::system_clock::now();

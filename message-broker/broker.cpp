@@ -200,11 +200,11 @@ int main() {
             std::string msg = random_string(8);
 
             topicManager.publish(topic, msg);
-            {
-                std::lock_guard<std::mutex> lock(cout_mutex);
-                std::cout << "[test] Published to " << topic << " - " << msg << std::endl;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            //{
+            //    std::lock_guard<std::mutex> lock(cout_mutex);
+            //    std::cout << "[test] Published to " << topic << " - " << msg << std::endl;
+            //}
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         }).detach();
 
